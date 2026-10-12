@@ -277,7 +277,7 @@ def eval_cmd(
     api_key: str = typer.Option("no-key", envvar="HERMES_DISTILL_EVAL_KEY"),
     max_samples: int | None = typer.Option(None),
     max_turns_per_sample: int = typer.Option(6),
-    max_tokens: int = typer.Option(512),
+    max_tokens: int = typer.Option(1024, help="Output budget per turn; thinking models need ~1k or their tool calls get cut off."),
     out: Path | None = typer.Option(None, help="Write the result JSON here."),
 ) -> None:
     """Next-action accuracy of a model against held-out Hermes sessions."""

@@ -32,7 +32,7 @@ class EvalConfig:
     api_key: str = "no-key"
     max_samples: int | None = None
     max_turns_per_sample: int = 6
-    max_tokens: int = 512
+    max_tokens: int = 1024  # thinking models (Qwen3) spend hundreds of tokens before the tool call
     temperature: float = 0.0
     timeout: float = 120.0
     strip_reasoning: bool = True
