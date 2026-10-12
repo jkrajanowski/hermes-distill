@@ -87,6 +87,25 @@ model:
 `stats` runs the same pipeline without writing anything and prints what was kept, what was dropped and why,
 tool usage, token totals and the estimated spend you are about to distill.
 
+## Fitting a small GPU
+
+The Hermes system prompt is ~4k tokens on its own, and the loss needs a `seq_len x vocab` logits
+tensor (152k vocab for Qwen3), so sequence length is the knob that decides whether training fits:
+
+| GPU | `export --system-mode` | `train --max-seq-len` |
+|---|---|---|
+| 8 GB (RTX 4060 laptop) | `short` (first paragraph) or `drop` | 4096 |
+| 16 GB | `short` | 8192 |
+| 24 GB+ | `keep` (full prompt, exactly what Hermes sends at inference) | 8192 |
+
+The trainer pins the model to one GPU on purpose. With `device_map="auto"` transformers quietly
+offloads layers to CPU when VRAM runs out, which looks like "training is running" while using
+15 GB of host RAM and making no progress. Better to fail with an out-of-memory error and lower
+the context.
+
+For a clean train/eval split by time, use `--before` / `--after` with an ISO datetime or epoch
+seconds, for example when you generate dedicated eval sessions after exporting the training set.
+
 ## Eval
 
 `eval` replays held-out conversations turn by turn against any OpenAI-compatible endpoint and scores whether

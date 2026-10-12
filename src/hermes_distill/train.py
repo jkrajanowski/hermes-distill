@@ -49,6 +49,8 @@ class TrainConfig:
     seed: int = 42
     max_samples: int | None = None
     drop_reasoning: bool = False
+    chunked_loss: bool = True
+    loss_chunk_size: int = 1024
 
 
 def load_records(path: Path, max_samples: int | None = None) -> list[dict[str, Any]]:
@@ -125,6 +127,43 @@ def dry_run(cfg: TrainConfig) -> dict[str, Any]:
     return stats
 
 
+def _make_chunked_trainer(SFTTrainer: Any, chunk_size: int) -> Any:
+    """SFTTrainer subclass whose loss never materializes the full ``seq_len x vocab`` logits.
+
+    The backbone runs once; the LM head + cross-entropy run per ``chunk_size`` tokens inside
+    ``torch.utils.checkpoint`` so only one chunk of fp32 logits (and its gradient) is alive at a
+    time. For a 152k vocab at 4k tokens this cuts peak memory by roughly 4 GB, which is the
+    difference between fitting an 8 GB GPU and paging through system RAM.
+    """
+    import torch
+    import torch.nn.functional as F
+    from torch.utils.checkpoint import checkpoint
+
+    def _chunk_loss(h: Any, y: Any, lm_head: Any) -> Any:
+        logits = lm_head(h).float()
+        return F.cross_entropy(logits.view(-1, logits.size(-1)), y.reshape(-1), ignore_index=-100, reduction="sum")
+
+    class ChunkedLossTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
+        def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+            labels = inputs["labels"]
+            base = model.get_base_model() if hasattr(model, "get_base_model") else model
+            backbone, lm_head = base.model, base.lm_head
+            out = backbone(input_ids=inputs["input_ids"], attention_mask=inputs.get("attention_mask"), use_cache=False)
+            hidden = out.last_hidden_state[:, :-1, :]
+            shift_labels = labels[:, 1:]
+            total = hidden.new_zeros((), dtype=torch.float32)
+            for i in range(0, hidden.size(1), chunk_size):
+                total = total + checkpoint(
+                    _chunk_loss, hidden[:, i:i + chunk_size], shift_labels[:, i:i + chunk_size], lm_head,
+                    use_reentrant=False,
+                )
+            denom = num_items_in_batch if num_items_in_batch is not None else (shift_labels != -100).sum().clamp(min=1)
+            loss = total / denom
+            return (loss, out) if return_outputs else loss
+
+    return ChunkedLossTrainer
+
+
 def train(cfg: TrainConfig) -> dict[str, Any]:
     import torch
     from datasets import Dataset
@@ -198,7 +237,8 @@ def train(cfg: TrainConfig) -> dict[str, Any]:
     except TypeError:  # older TRL
         sft_config = SFTConfig(max_seq_length=cfg.max_seq_len, **sft_kwargs)
 
-    trainer = SFTTrainer(
+    trainer_cls = _make_chunked_trainer(SFTTrainer, cfg.loss_chunk_size) if cfg.chunked_loss else SFTTrainer
+    trainer = trainer_cls(
         model=model,
         args=sft_config,
         train_dataset=dataset,
