@@ -49,6 +49,7 @@ class EvalResult:
     errors: int = 0
     latency_s: float = 0.0
     per_tool: dict[str, dict[str, int]] = field(default_factory=dict)
+    first_error: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         def pct(a: int, b: int) -> float | None:
@@ -64,6 +65,7 @@ class EvalResult:
             "errors": self.errors,
             "avg_latency_s": round(self.latency_s / self.turns, 2) if self.turns else None,
             "per_tool": self.per_tool,
+            "first_error": self.first_error,
         }
 
 
@@ -101,6 +103,19 @@ def run_eval(cfg: EvalConfig, progress: Any | None = None) -> EvalResult:
     client = OpenAI(base_url=cfg.base_url, api_key=cfg.api_key, timeout=cfg.timeout)
     records = load_records(cfg.data, cfg.max_samples)
     res = EvalResult()
+    send_temperature = True
+
+    def _complete(messages: list[dict[str, Any]], tools: Any) -> Any:
+        nonlocal send_temperature
+        kwargs: dict[str, Any] = dict(model=cfg.model, messages=messages, tools=tools, max_tokens=cfg.max_tokens)
+        if send_temperature:
+            try:
+                return client.chat.completions.create(temperature=cfg.temperature, **kwargs)
+            except Exception as exc:  # noqa: BLE001
+                if "temperature" not in str(exc).lower():
+                    raise
+                send_temperature = False  # e.g. Claude Sonnet 5 rejects the parameter outright
+        return client.chat.completions.create(**kwargs)
     for rec in records:
         messages = rec["messages"]
         tools = rec.get("tools") or None
@@ -113,16 +128,12 @@ def run_eval(cfg: EvalConfig, progress: Any | None = None) -> EvalResult:
             gold_is_tool = bool(gold_calls)
             t0 = time.time()
             try:
-                resp = client.chat.completions.create(
-                    model=cfg.model,
-                    messages=_prefix(messages, k, cfg.strip_reasoning),
-                    tools=tools,
-                    temperature=cfg.temperature,
-                    max_tokens=cfg.max_tokens,
-                )
-            except Exception:
+                resp = _complete(_prefix(messages, k, cfg.strip_reasoning), tools)
+            except Exception as exc:  # noqa: BLE001 - any endpoint failure counts as a miss
                 res.errors += 1
                 res.turns += 1
+                if res.first_error is None:
+                    res.first_error = f"{type(exc).__name__}: {str(exc)[:400]}"
                 continue
             res.latency_s += time.time() - t0
             res.turns += 1

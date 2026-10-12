@@ -296,6 +296,8 @@ def eval_cmd(
     for k in ("turns", "action_acc", "tool_turns", "tool_acc", "args_exact", "json_valid", "errors", "avg_latency_s"):
         t.add_row(k, str(d[k]))
     console.print(t)
+    if d.get("first_error"):
+        console.print(f"[yellow]first error: {d['first_error']}[/yellow]")
     if out:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(d, indent=2), encoding="utf-8")
