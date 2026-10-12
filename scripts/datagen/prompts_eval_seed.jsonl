@@ -1,0 +1,20 @@
+{"cat": "read", "prompt": "Read src/hermes_distill/export.py and explain how the holdout split is decided."}
+{"cat": "read", "prompt": "Open tests/test_pipeline.py and list the test functions with a one-line description of what each checks."}
+{"cat": "read", "prompt": "Read data/notes/ideas.md and data/notes/meeting.md and tell me which idea relates to a decision in the meeting."}
+{"cat": "terminal", "prompt": "How many bytes is data/sales.csv and how many rows does it have (excluding the header)? Use commands."}
+{"cat": "terminal", "prompt": "List every .py file under data/buggy with its line count, sorted by line count."}
+{"cat": "terminal", "prompt": "Check if pip can import 'requests' in this Python. If not, tell me the exact command to install it, but do not install it."}
+{"cat": "terminal", "prompt": "Print the first 5 and last 5 lines of data/logs/app.log."}
+{"cat": "search", "prompt": "Find every function definition in src/hermes_distill/filters.py and list their names."}
+{"cat": "search", "prompt": "Search data/logs/app.log for 'rate limited' and report how many times it occurs and in which components."}
+{"cat": "data", "prompt": "From data/sales.csv, which month had the highest total revenue and how much was it?"}
+{"cat": "data", "prompt": "Count events per user in data/events.json and report the 3 most active users."}
+{"cat": "data", "prompt": "What fraction of rows in data/users.csv have an invalid age (not an integer in 0..120)? Show the number and percentage."}
+{"cat": "data", "prompt": "From data/inventory.csv, list items whose stock is below their reorder_at threshold."}
+{"cat": "write", "prompt": "Write out/palindromes.py that prints all palindromic words in README.md (length >= 3), then run it."}
+{"cat": "write", "prompt": "Create out/summary.json containing the number of orders, total revenue and unique products from data/sales.csv. Print the file when done."}
+{"cat": "patch", "prompt": "Change the default host in data/buggy/config.ini from 0.0.0.0 to 127.0.0.1 and show the resulting [server] section."}
+{"cat": "patch", "prompt": "In data/buggy/average.py, rename the function average to mean everywhere, including the demo, and run it."}
+{"cat": "multi", "prompt": "Write out/top_errors.py that prints the 5 most common ERROR messages in data/logs/app.log with counts, run it, and paste the output."}
+{"cat": "multi", "prompt": "Create out/clean_users.csv from data/users.csv keeping only rows with a valid email (contains '@') and a valid integer age. Report how many rows were kept."}
+{"cat": "chat", "prompt": "In two sentences, what is the risk of training a model on tool-call transcripts that include dangling tool calls?"}

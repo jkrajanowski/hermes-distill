@@ -1,0 +1,60 @@
+{"cat": "read", "prompt": "Read README.md and tell me in two sentences what the project does and what its current status is."}
+{"cat": "read", "prompt": "Open src/hermes_distill/filters.py and explain what the redact function does and which kinds of secrets it catches."}
+{"cat": "read", "prompt": "Read pyproject.toml and list the optional dependency groups and what each one is for."}
+{"cat": "read", "prompt": "Look at src/hermes_distill/state_db.py and tell me how it avoids touching the live database."}
+{"cat": "read", "prompt": "Read src/hermes_distill/evaluate.py and describe the four metrics it computes, one line each."}
+{"cat": "read", "prompt": "What CLI commands does src/hermes_distill/cli.py define? List them with their one-line help."}
+{"cat": "read", "prompt": "Read data/notes/meeting.md and extract the action items as a checklist."}
+{"cat": "read", "prompt": "Summarize data/logs/app.log: how many ERROR lines, which component errors most, and the time window covered."}
+{"cat": "terminal", "prompt": "How many lines of Python are in src/hermes_distill in total? Use the terminal."}
+{"cat": "terminal", "prompt": "Which Python version and which OS is this machine running? Check with commands, don't guess."}
+{"cat": "terminal", "prompt": "List the five largest files under this directory, excluding anything in .venv, with their sizes."}
+{"cat": "terminal", "prompt": "Count how many .jsonl, .csv and .md files exist under data/ and report the numbers."}
+{"cat": "terminal", "prompt": "Compute the SHA-256 hash of README.md and report the first 16 hex characters."}
+{"cat": "terminal", "prompt": "Run the test suite with python -m pytest -q and report how many tests passed and failed."}
+{"cat": "terminal", "prompt": "Check whether the packages typer, rich, numpy and pandas are importable in the current python. Report which are missing."}
+{"cat": "terminal", "prompt": "What is the current date and time on this machine, and what timezone offset? Use a command."}
+{"cat": "terminal", "prompt": "Show me the directory tree of src/ two levels deep."}
+{"cat": "terminal", "prompt": "How many words are in data/notes/meeting.md and what is the longest line?"}
+{"cat": "search", "prompt": "Find where the function default_state_db is defined and where it is called from."}
+{"cat": "search", "prompt": "Search the codebase for every place that references 'tool_calls' and give me a count per file."}
+{"cat": "search", "prompt": "Are there any TODO or FIXME comments in src/? List them with file and line."}
+{"cat": "search", "prompt": "Find all files under data/ that mention the word 'refund' and show the matching lines."}
+{"cat": "search", "prompt": "Which modules import typer? Which import torch? Answer with file names."}
+{"cat": "data", "prompt": "Load data/sales.csv and report total revenue, the number of orders, and the top 3 products by revenue."}
+{"cat": "data", "prompt": "Using data/sales.csv, compute revenue per region and print it as a markdown table sorted descending."}
+{"cat": "data", "prompt": "Convert data/sales.csv to JSON lines and save it as out/sales.jsonl. Tell me how many records you wrote."}
+{"cat": "data", "prompt": "In data/sales.csv, find orders with quantity greater than 20 and write them to out/big_orders.csv. How many are there?"}
+{"cat": "data", "prompt": "Parse data/events.json and tell me how many events per type there are and the earliest and latest timestamp."}
+{"cat": "data", "prompt": "From data/logs/app.log, extract every line containing 'latency' and compute the average latency in ms."}
+{"cat": "data", "prompt": "Read data/users.csv and find duplicate email addresses. List them and how many times each appears."}
+{"cat": "data", "prompt": "What is the median order value in data/sales.csv? Show the python you used."}
+{"cat": "write", "prompt": "Write a Python script out/wordfreq.py that prints the 10 most common words in a text file given as argv[1], then run it on README.md and show the output."}
+{"cat": "write", "prompt": "Create out/fizzbuzz.py that prints FizzBuzz from 1 to 30, run it, and show me the last 5 lines of output."}
+{"cat": "write", "prompt": "Write a small script out/csv_stats.py that takes a CSV path and a numeric column name and prints min, max, mean. Test it on data/sales.csv with the column 'revenue'."}
+{"cat": "write", "prompt": "Create a file out/hello.md with a short markdown document that has a title, two bullet points and a code block, then read it back to confirm."}
+{"cat": "write", "prompt": "Write out/retry.py containing a retry decorator with exponential backoff (max 3 tries) and a tiny demo that fails twice then succeeds. Run it."}
+{"cat": "write", "prompt": "Generate out/report.md summarizing data/sales.csv: total revenue, orders, top region, top product. Use real numbers computed from the file."}
+{"cat": "patch", "prompt": "data/buggy/average.py has a bug that makes it crash on an empty list. Fix it with a minimal change and run it to prove it works."}
+{"cat": "patch", "prompt": "data/buggy/slugify.py produces double hyphens for inputs like 'hello   world'. Fix it and run the built-in demo."}
+{"cat": "patch", "prompt": "data/buggy/parse_date.py fails on dates like '2026-1-5'. Make it accept single-digit months and days, then test it with three inputs."}
+{"cat": "patch", "prompt": "Add a module docstring to data/buggy/average.py explaining what it does. Do not change any logic."}
+{"cat": "patch", "prompt": "In data/buggy/config.ini, change the port to 8081 and add a key 'debug = false' under the [server] section. Show the final file."}
+{"cat": "multi", "prompt": "Write a pytest file out/test_slugify.py with three tests for data/buggy/slugify.py (after fixing its double-hyphen bug) and run them."}
+{"cat": "multi", "prompt": "Create out/inventory.py: a tiny CLI that reads data/inventory.csv and supports 'list' and 'low-stock <threshold>' subcommands. Demonstrate both."}
+{"cat": "multi", "prompt": "Read data/notes/meeting.md, then create out/followup_email.txt: a short, polite follow-up email listing the decisions and who owns each action."}
+{"cat": "multi", "prompt": "Profile data/buggy/slow.py: find what makes it slow, fix it, and show before/after timings."}
+{"cat": "multi", "prompt": "Validate every row in data/users.csv: email must contain '@', age must be an integer between 0 and 120. Write the invalid rows to out/invalid_users.csv and report counts."}
+{"cat": "multi", "prompt": "Make out/dedupe.py that removes duplicate rows from a CSV by a given column, keeping the first occurrence. Run it on data/users.csv by 'email' and report how many rows were removed."}
+{"cat": "multi", "prompt": "Build out/log_summary.py that reads data/logs/app.log and prints a per-level count plus the 3 most common error messages. Run it."}
+{"cat": "multi", "prompt": "Check whether git is available on this machine and whether this directory is a git repo. If it is not, say so and list what you would need to initialize one."}
+{"cat": "chat", "prompt": "Explain QLoRA in three sentences for someone who knows what LoRA is."}
+{"cat": "chat", "prompt": "What is the difference between a holdout split by session id and a random row split, and why does it matter for conversation data?"}
+{"cat": "chat", "prompt": "Give me a regex that matches an Anthropic-style API key prefix 'sk-ant-' followed by at least 20 url-safe characters, and explain each part."}
+{"cat": "chat", "prompt": "In one paragraph: why would someone fine-tune a 4B model on their own agent logs instead of just using a frontier model?"}
+{"cat": "chat", "prompt": "List three common reasons a tool-calling fine-tune produces invalid JSON arguments, and one mitigation for each."}
+{"cat": "chat", "prompt": "What does SQLite's backup API give you that copying the .db file does not?"}
+{"cat": "terminal", "prompt": "Create a directory out/archive, copy every .md file from data/notes into it, and list the result."}
+{"cat": "terminal", "prompt": "Count the number of unique IP addresses in data/logs/access.log and show the top 3 by request count."}
+{"cat": "data", "prompt": "From data/logs/access.log, what percentage of requests returned a 5xx status? Show the computation."}
+{"cat": "write", "prompt": "Write out/ip_report.py that parses data/logs/access.log and prints requests per status class (2xx/3xx/4xx/5xx). Run it."}
