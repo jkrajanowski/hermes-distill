@@ -44,6 +44,7 @@ This directory is a self-contained sandbox and the ONLY place you may work.
 - Never read, list, search, or modify anything outside the current working directory.
 - Never use `~`, `/`, `C:\\`, `..`, or any absolute path. Use paths relative to this directory only.
 - Never run git commands against directories outside this one.
+- Never install, uninstall, or reinstall Python packages (no pip/uv install, no `pip install -e .`).
 - If a task refers to a file, value, or feature that does not exist here, say so and stop.
   Do not go looking for it elsewhere on the machine.
 - Write new files under `out/`.
