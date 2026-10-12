@@ -22,5 +22,17 @@ also what the prompt generator reads, so adding a file there makes new task fami
 Measured cost with Claude Sonnet 5 as the teacher: about $0.05 per session, 10 to 20 seconds each,
 roughly 12 sessions per minute with 6 workers on a fresh API key.
 
+Billing gotcha: Anthropic promotional credits did not cover sessions run through Hermes' native
+Anthropic provider (they drained the purchased balance instead), but did cover the same model through
+the OpenAI-compatible endpoint. If you are burning promo credit, point Hermes at it as a custom provider:
+
+```bash
+hermes config set model.provider custom
+hermes config set model.base_url https://api.anthropic.com/v1
+hermes config set model.default claude-sonnet-5
+hermes config set model.api_mode chat_completions
+# and CUSTOM_API_KEY=<your key> in the Hermes .env
+```
+
 Task families and their share of the generated prompts: data 18%, terminal 14%, write 14%, read 12%,
 patch 12%, multi-step 12%, search 10%, no-tool chat 8%.
