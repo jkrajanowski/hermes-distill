@@ -70,6 +70,7 @@ class Session:
     tool_names: list[str] = field(default_factory=list)
     tool_schemas: list[dict[str, Any]] | None = None
     parent_session_id: str | None = None
+    cwd: str | None = None
 
 
 @dataclass
@@ -250,6 +251,7 @@ class StateDB:
             "COALESCE(tp.prompt, s.tool_names)" if (has_tool_names and has_prompts) else (
                 "s.tool_names" if has_tool_names else "NULL"
             ),
+            "s.cwd" if "cwd" in cols else "NULL",  # index 18
         ]
         sql = "SELECT " + ", ".join(select) + " FROM sessions s"
         if has_prompt_hash:
@@ -279,7 +281,7 @@ class StateDB:
                     end_reason=r[5], message_count=r[6], tool_call_count=r[7], input_tokens=r[8],
                     output_tokens=r[9], estimated_cost_usd=float(r[10] or 0), title=r[11],
                     parent_session_id=r[12], cache_read_tokens=r[13], cache_write_tokens=r[14],
-                    system_prompt=r[15] or r[16], tool_names=names, tool_schemas=schemas,
+                    system_prompt=r[15] or r[16], tool_names=names, tool_schemas=schemas, cwd=r[18],
                 )
             )
         return out

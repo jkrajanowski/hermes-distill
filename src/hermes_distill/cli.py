@@ -38,7 +38,7 @@ def _root(
 
 def _filter_config(
     min_assistant_turns: int, min_tool_calls: int, require_reasoning: bool, allow_incomplete: bool,
-    max_tool_chars: int, no_dedupe: bool, no_redact: bool, drop_system: bool,
+    max_tool_chars: int, no_dedupe: bool, no_redact: bool, drop_system: bool, allow_outside_cwd: bool = False,
 ) -> FilterConfig:
     return FilterConfig(
         min_assistant_turns=min_assistant_turns,
@@ -49,6 +49,7 @@ def _filter_config(
         dedupe=not no_dedupe,
         redact_secrets=not no_redact,
         keep_system=not drop_system,
+        drop_outside_cwd=not allow_outside_cwd,
     )
 
 
@@ -110,13 +111,14 @@ def stats(
     no_redact: bool = typer.Option(False),
     drop_system: bool = typer.Option(False),
     tools_from_hermes: bool = typer.Option(True, help="Pull real tool schemas from the local Hermes install."),
+    allow_outside_cwd: bool = typer.Option(False, help="Keep sessions whose tool calls touched paths outside their cwd."),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:
     """Summarize what is in your Hermes history and what would survive the filters."""
     from .export import collect
 
     cfg = _filter_config(min_assistant_turns, min_tool_calls, require_reasoning, allow_incomplete,
-                         max_tool_chars, no_dedupe, no_redact, drop_system)
+                         max_tool_chars, no_dedupe, no_redact, drop_system, allow_outside_cwd)
     with StateDB(db) as sdb:
         console.print(f"[dim]state.db: {sdb.path}  (schema v{sdb.schema_version()})[/dim]")
         _, st, schemas = collect(sdb, cfg, source or None, exclude_source or None, _since_epoch(days, after),
@@ -155,6 +157,7 @@ def export(
     tools_scope: str = typer.Option("used", help="Tools listed per sample: 'used' (only called tools) or 'all' (every Hermes tool)."),
     system_mode: str = typer.Option("keep", help="System prompt per sample: keep (full, ~4k tokens), short (first paragraph), drop."),
     before: str | None = typer.Option(None, help="Only sessions started before this ISO datetime or epoch."),
+    allow_outside_cwd: bool = typer.Option(False, help="Keep sessions whose tool calls touched paths outside their cwd."),
 ) -> None:
     """Export filtered conversations to JSONL (train + holdout) plus tools.json."""
     from .export import collect, write_jsonl
@@ -164,7 +167,7 @@ def export(
     if system_mode not in ("keep", "short", "drop"):
         raise typer.BadParameter("--system-mode must be keep, short or drop")
     cfg = _filter_config(min_assistant_turns, min_tool_calls, require_reasoning, allow_incomplete,
-                         max_tool_chars, no_dedupe, no_redact, drop_system)
+                         max_tool_chars, no_dedupe, no_redact, drop_system, allow_outside_cwd)
     with StateDB(db) as sdb:
         console.print(f"[dim]state.db: {sdb.path}  (schema v{sdb.schema_version()})[/dim]")
         samples, st, schemas = collect(sdb, cfg, source or None, exclude_source or None, _since_epoch(days, after),

@@ -229,6 +229,28 @@ def test_assistant_only_labels_mask_non_assistant_tokens():
     assert full["labels"] == full["input_ids"]
 
 
+def test_outside_cwd_detection():
+    from hermes_distill.filters import touches_outside_cwd
+
+    cwd = r"C:\Users\x\sandbox_1"
+
+    def conv(args):
+        return [{"role": "assistant", "content": "", "tool_calls": [{"id": "1", "type": "function",
+                                                                     "function": {"name": "terminal", "arguments": args}}]}]
+
+    assert not touches_outside_cwd(conv({"command": "ls data/ && cat out/report.md"}), cwd)
+    assert not touches_outside_cwd(conv({"path": r"C:\Users\x\sandbox_1\data\sales.csv"}), cwd)
+    assert not touches_outside_cwd(conv({"command": "cd /c/Users/x/sandbox_1/data && wc -l sales.csv"}), cwd)
+    assert touches_outside_cwd(conv({"command": "cd ~ && git status"}), cwd)
+    assert touches_outside_cwd(conv({"path": r"C:\Users\x\other\README.md"}), cwd)
+    assert touches_outside_cwd(conv({"command": "find /home -name pyproject.toml"}), cwd)
+    assert touches_outside_cwd(conv({"command": "cat /etc/passwd"}), cwd)
+    assert not touches_outside_cwd(conv({"command": "python -c 'print(1.5/2)'"}), cwd)
+    assert not touches_outside_cwd(conv({"code": "with open('data/sales.csv') as f:\n    r = f.read()"}), cwd)
+    assert not touches_outside_cwd(conv({"command": "sort data/x.log > /tmp/counts.txt && cat /tmp/counts.txt"}), cwd)
+    assert not touches_outside_cwd(conv({"command": "cd data/buggy && python - > ../../out/log.txt"}), cwd)
+
+
 def test_apply_filters_reasons():
     cfg = FilterConfig(min_tool_calls=1)
     res = apply_filters([{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}], cfg)

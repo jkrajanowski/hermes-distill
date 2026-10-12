@@ -109,7 +109,7 @@ def collect(
                 pinned.setdefault(name, schema)
         rows = db.messages(session.id)
         messages = to_openai_messages(session, rows, include_system=include_system)
-        result = apply_filters(messages, cfg)
+        result = apply_filters(messages, cfg, cwd=session.cwd)
         if result.messages is None:
             stats.dropped[result.reason or "unknown"] += 1
             continue

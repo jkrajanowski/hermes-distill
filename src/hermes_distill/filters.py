@@ -167,6 +167,50 @@ def repair_tool_pairs(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+# Matched against json.dumps(arguments), so a Windows backslash shows up as "\\\\" (two chars).
+_ABS_PATH = re.compile(r"(?<![\w.])(?:[A-Za-z]:(?:\\\\|/)|/(?:c|d|home|Users|root|etc|tmp|var|mnt|opt)(?=[/\\\\\s\"']|$)|~(?![\w]))")
+_PATH_END = ' "\'\n\t;|&<>)(,'
+
+
+def _norm_path(p: str) -> str:
+    p = re.sub(r"[\\/]+", "/", p).rstrip("/").lower()  # JSON-escaped backslashes collapse too
+    m = re.match(r"^/([a-z])/(.*)$", p)  # git-bash /c/Users/... -> c:/users/...
+    return f"{m.group(1)}:/{m.group(2)}" if m else p
+
+
+def _temp_roots() -> list[str]:
+    import tempfile
+
+    from .state_db import default_hermes_home
+
+    roots = ["/tmp", _norm_path(tempfile.gettempdir()), _norm_path(str(default_hermes_home() / "cache" / "scratch"))]
+    return [r for r in roots if r]
+
+
+def touches_outside_cwd(messages: list[dict[str, Any]], cwd: str | None) -> bool:
+    """True if any tool call references a filesystem location outside ``cwd``.
+
+    Absolute paths under ``cwd`` or under a temp directory are fine; any other absolute path or
+    ``~`` counts as outside. Sessions like that leak the user's directory layout into the dataset
+    and teach the model to wander, so the exporter drops them by default. Relative ``..`` is not
+    checked: it is too common inside legitimate subdirectory work to be a useful signal.
+    """
+    allowed = ([_norm_path(cwd)] if cwd else []) + _temp_roots()
+    for m in messages:
+        for tc in m.get("tool_calls") or []:
+            blob = json.dumps(tc["function"]["arguments"], ensure_ascii=False)
+            for hit in _ABS_PATH.finditer(blob):
+                if hit.group(0).startswith("~"):
+                    return True
+                end = hit.end()
+                while end < len(blob) and blob[end] not in _PATH_END:
+                    end += 1
+                path = _norm_path(blob[hit.start():end])
+                if not any(path == a or path.startswith(a + "/") for a in allowed):
+                    return True
+    return False
+
+
 def conversation_hash(messages: list[dict[str, Any]]) -> str:
     h = hashlib.sha1()
     for m in messages:
@@ -194,6 +238,7 @@ class FilterConfig:
     dedupe: bool = True
     redact_secrets: bool = True
     keep_system: bool = True
+    drop_outside_cwd: bool = True
     seen_hashes: set[str] = field(default_factory=set)
 
 
@@ -206,8 +251,10 @@ class FilterResult:
     assistant_turns: int = 0
 
 
-def apply_filters(messages: list[dict[str, Any]], cfg: FilterConfig) -> FilterResult:
+def apply_filters(messages: list[dict[str, Any]], cfg: FilterConfig, cwd: str | None = None) -> FilterResult:
     msgs = [m for m in messages if cfg.keep_system or m["role"] != "system"]
+    if cfg.drop_outside_cwd and touches_outside_cwd(msgs, cwd):
+        return FilterResult(None, "outside_cwd")
     msgs = repair_tool_pairs(msgs)
     if cfg.require_completed:
         msgs = trim_dangling(msgs)
