@@ -139,7 +139,16 @@ can learn how *this* agent works on *this* kind of work", not "it generalizes to
 per-tool table makes the point: v2 picks `search_files` on 8 of 8 turns where the teacher did; the base
 model never picked it once.
 
-What the first two runs taught us, in order of how much it mattered:
+A second, larger holdout (30 sessions and 118 turns, split by session id from the same generated
+pool, never trained on) shows the same ordering with tighter error bars (about ±9 points):
+
+| model | action type | right tool | args exact | valid JSON | s/turn |
+|---|---:|---:|---:|---:|---:|
+| Qwen3-4B base | 58.5% | 29.7% | 2.2% | 46.2% | 15.1 |
+| v1 (61 sessions) | 58.5% | 41.6% | 9.0% | 64.0% | 5.4 |
+| v2 (429 sessions) | **88.1%** | **72.5%** | **20.9%** | **86.8%** | **1.7** |
+
+What the first runs taught us, in order of how much it mattered:
 
 1. **Loss masking is not optional.** Only 13% of the tokens in a Hermes session are the assistant's
    own turns; the rest is system prompt, tool schemas and tool output. v0 trained on all of it, spent
