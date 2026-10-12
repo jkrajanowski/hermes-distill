@@ -22,6 +22,7 @@ Design notes
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -51,6 +52,7 @@ class TrainConfig:
     drop_reasoning: bool = False
     chunked_loss: bool = True
     loss_chunk_size: int = 512
+    assistant_only_loss: bool = True
 
 
 def load_records(path: Path, max_samples: int | None = None) -> list[dict[str, Any]]:
@@ -98,6 +100,33 @@ def render_texts(records: list[dict[str, Any]], tokenizer: Any, drop_reasoning: 
     return texts
 
 
+_ASSISTANT_SPAN = re.compile(r"<\|im_start\|>assistant\n(.*?<\|im_end\|>)", re.DOTALL)
+
+
+def tokenize_with_assistant_labels(text: str, tokenizer: Any, max_seq_len: int, assistant_only: bool) -> dict[str, Any]:
+    """Tokenize rendered chat text; labels are -100 outside assistant turns when ``assistant_only``.
+
+    Spans are found on the rendered text with ChatML markers (``<|im_start|>assistant`` ... ``<|im_end|>``),
+    which Qwen, Hermes and most tool-aware templates use. The assistant's content plus its closing
+    ``<|im_end|>`` are trained; headers, system/user/tool turns are not. If the template has no such
+    markers, every token is trained and the caller is told via ``masked_fraction = 0``.
+    """
+    enc = tokenizer(text, add_special_tokens=False, return_offsets_mapping=True, truncation=True, max_length=max_seq_len)
+    ids, offsets = enc["input_ids"], enc["offset_mapping"]
+    if not assistant_only:
+        return {"input_ids": ids, "labels": list(ids), "trained_tokens": len(ids)}
+    spans = [(m.start(1), m.end(1)) for m in _ASSISTANT_SPAN.finditer(text)]
+    if not spans:
+        return {"input_ids": ids, "labels": list(ids), "trained_tokens": len(ids)}
+    labels = [-100] * len(ids)
+    trained = 0
+    for i, (s, e) in enumerate(offsets):
+        if e > s and any(s >= a and e <= b for a, b in spans):
+            labels[i] = ids[i]
+            trained += 1
+    return {"input_ids": ids, "labels": labels, "trained_tokens": trained}
+
+
 def token_stats(texts: list[str], tokenizer: Any, max_seq_len: int) -> dict[str, Any]:
     lengths = [len(tokenizer(t, add_special_tokens=False).input_ids) for t in texts]
     if not lengths:
@@ -122,6 +151,9 @@ def dry_run(cfg: TrainConfig) -> dict[str, Any]:
     tokenizer = AutoTokenizer.from_pretrained(cfg.base_model)
     texts = render_texts(records, tokenizer, cfg.drop_reasoning)
     stats = token_stats(texts, tokenizer, cfg.max_seq_len)
+    encoded = [tokenize_with_assistant_labels(t, tokenizer, cfg.max_seq_len, cfg.assistant_only_loss) for t in texts]
+    total = sum(len(e["input_ids"]) for e in encoded)
+    stats["trained_token_fraction"] = round(sum(e["trained_tokens"] for e in encoded) / max(total, 1), 3)
     stats["config"] = {k: str(v) if isinstance(v, Path) else v for k, v in asdict(cfg).items()}
     stats["example"] = texts[0][:1500] if texts else ""
     return stats
@@ -192,7 +224,12 @@ def train(cfg: TrainConfig) -> dict[str, Any]:
         tokenizer.pad_token = tokenizer.eos_token
     texts = render_texts(records, tokenizer, cfg.drop_reasoning)
     stats = token_stats(texts, tokenizer, cfg.max_seq_len)
-    dataset = Dataset.from_dict({"text": texts})
+    encoded = [tokenize_with_assistant_labels(t, tokenizer, cfg.max_seq_len, cfg.assistant_only_loss) for t in texts]
+    stats["trained_token_fraction"] = round(
+        sum(e["trained_tokens"] for e in encoded) / max(sum(len(e["input_ids"]) for e in encoded), 1), 3
+    )
+    # Pre-tokenized with explicit labels: TRL uses them as-is (-100 = excluded from the loss).
+    dataset = Dataset.from_dict({"input_ids": [e["input_ids"] for e in encoded], "labels": [e["labels"] for e in encoded]})
 
     bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
     quant = None
@@ -241,7 +278,6 @@ def train(cfg: TrainConfig) -> dict[str, Any]:
         optim="paged_adamw_8bit" if cfg.load_4bit else "adamw_torch",
         seed=cfg.seed,
         report_to="none",
-        dataset_text_field="text",
         packing=False,
     )
     try:

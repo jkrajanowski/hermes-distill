@@ -213,6 +213,22 @@ def test_default_home_resolution(monkeypatch: pytest.MonkeyPatch):
     assert state_db.default_state_db() == Path.home() / ".hermes" / "state.db"
 
 
+def test_assistant_only_labels_mask_non_assistant_tokens():
+    from hermes_distill.train import tokenize_with_assistant_labels
+
+    class Tok:  # character-level fake fast tokenizer
+        def __call__(self, text, add_special_tokens=False, return_offsets_mapping=True, truncation=True, max_length=10**6):
+            return {"input_ids": [ord(c) for c in text], "offset_mapping": [(i, i + 1) for i in range(len(text))]}
+
+    text = "<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\nyo<|im_end|>\n"
+    out = tokenize_with_assistant_labels(text, Tok(), 10**6, assistant_only=True)
+    trained = "".join(chr(i) for i in out["labels"] if i != -100)
+    assert trained == "yo<|im_end|>"
+    assert out["trained_tokens"] == len("yo<|im_end|>")
+    full = tokenize_with_assistant_labels(text, Tok(), 10**6, assistant_only=False)
+    assert full["labels"] == full["input_ids"]
+
+
 def test_apply_filters_reasons():
     cfg = FilterConfig(min_tool_calls=1)
     res = apply_filters([{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}], cfg)

@@ -203,6 +203,7 @@ def train(
     max_samples: int | None = typer.Option(None),
     drop_reasoning: bool = typer.Option(False, help="Train without <think> content."),
     no_chunked_loss: bool = typer.Option(False, help="Use the stock loss (materializes full logits; needs ~4 GB more VRAM at 4k)."),
+    full_loss: bool = typer.Option(False, help="Train on every token instead of assistant turns only."),
     loss_chunk_size: int = typer.Option(512),
     dry_run: bool = typer.Option(False, help="Render and tokenize only; print length stats and one example."),
 ) -> None:
@@ -215,7 +216,7 @@ def train(
         data=data, output=output, base_model=base_model, epochs=epochs, learning_rate=lr,
         max_seq_len=max_seq_len, lora_r=lora_r, lora_alpha=lora_alpha, batch_size=batch_size,
         grad_accum=grad_accum, load_4bit=not no_4bit, max_samples=max_samples, drop_reasoning=drop_reasoning,
-        chunked_loss=not no_chunked_loss, loss_chunk_size=loss_chunk_size,
+        chunked_loss=not no_chunked_loss, loss_chunk_size=loss_chunk_size, assistant_only_loss=not full_loss,
     )
     if dry_run:
         stats_ = _dry(cfg)
