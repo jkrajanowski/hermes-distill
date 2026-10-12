@@ -52,7 +52,15 @@ def _filter_config(
     )
 
 
-def _since_epoch(days: int | None) -> float | None:
+def _since_epoch(days: int | None, after: str | None = None) -> float | None:
+    """``--days N`` or ``--after <ISO datetime | epoch seconds>`` -> epoch lower bound."""
+    if after:
+        try:
+            return float(after)
+        except ValueError:
+            from datetime import datetime
+
+            return datetime.fromisoformat(after).timestamp()
     return time.time() - days * 86400 if days else None
 
 
@@ -92,6 +100,7 @@ def stats(
     source: list[str] = typer.Option([], help="Only these sources (cli, telegram, tui, cron, ...)."),
     exclude_source: list[str] = typer.Option([], help="Exclude these sources."),
     days: int | None = typer.Option(None, help="Only sessions from the last N days."),
+    after: str | None = typer.Option(None, help="Only sessions started after this ISO datetime or epoch."),
     min_assistant_turns: int = typer.Option(1),
     min_tool_calls: int = typer.Option(0),
     require_reasoning: bool = typer.Option(False),
@@ -110,7 +119,7 @@ def stats(
                          max_tool_chars, no_dedupe, no_redact, drop_system)
     with StateDB(db) as sdb:
         console.print(f"[dim]state.db: {sdb.path}  (schema v{sdb.schema_version()})[/dim]")
-        _, st, schemas = collect(sdb, cfg, source or None, exclude_source or None, _since_epoch(days),
+        _, st, schemas = collect(sdb, cfg, source or None, exclude_source or None, _since_epoch(days, after),
                                  tools_from_hermes=tools_from_hermes)
     d = st.as_dict()
     d["tool_schemas_known"] = len(schemas)
@@ -132,6 +141,7 @@ def export(
     source: list[str] = typer.Option([]),
     exclude_source: list[str] = typer.Option([]),
     days: int | None = typer.Option(None),
+    after: str | None = typer.Option(None, help="Only sessions started after this ISO datetime or epoch."),
     min_assistant_turns: int = typer.Option(1),
     min_tool_calls: int = typer.Option(0),
     require_reasoning: bool = typer.Option(False),
@@ -153,7 +163,7 @@ def export(
                          max_tool_chars, no_dedupe, no_redact, drop_system)
     with StateDB(db) as sdb:
         console.print(f"[dim]state.db: {sdb.path}  (schema v{sdb.schema_version()})[/dim]")
-        samples, st, schemas = collect(sdb, cfg, source or None, exclude_source or None, _since_epoch(days),
+        samples, st, schemas = collect(sdb, cfg, source or None, exclude_source or None, _since_epoch(days, after),
                                        tools_from_hermes=tools_from_hermes, tools_scope=tools_scope)
     if tool_schemas:
         override = json.loads(tool_schemas.read_text(encoding="utf-8"))
