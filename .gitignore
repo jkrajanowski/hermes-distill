@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+# data and models never go to git
+data/
+runs/
+models/
+*.jsonl
+*.gguf
+*.safetensors
+.env

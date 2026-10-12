@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-distill"
+version = "0.1.0"
+description = "Turn your Hermes Agent session history into a fine-tuned local model, and plug it back in."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Jakub Krajanowski" }]
+keywords = ["hermes-agent", "fine-tuning", "distillation", "lora", "agents", "ollama"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+  "typer>=0.12",
+  "rich>=13",
+]
+
+[project.optional-dependencies]
+train = [
+  "torch>=2.4",
+  "transformers>=4.45",
+  "datasets>=2.20",
+  "peft>=0.13",
+  "trl>=0.12",
+  "accelerate>=0.34",
+  "bitsandbytes>=0.43",
+]
+eval = ["openai>=1.40"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+hermes-distill = "hermes_distill.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/jkrajanowski/hermes-distill"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008", "E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,284 @@
+"""``hermes-distill`` command line."""
+
+from __future__ import annotations
+
+import json
+import time
+from pathlib import Path
+
+import typer
+from rich.console import Console
+from rich.table import Table
+
+from . import __version__
+from .filters import FilterConfig
+from .state_db import StateDB, default_state_db
+
+app = typer.Typer(
+    name="hermes-distill",
+    help="Turn your Hermes Agent session history into a fine-tuned local model, and plug it back in.",
+    no_args_is_help=True,
+    add_completion=False,
+)
+console = Console()
+
+
+def _version(value: bool) -> None:
+    if value:
+        console.print(f"hermes-distill {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _root(
+    version: bool = typer.Option(False, "--version", callback=_version, is_eager=True, help="Show version."),
+) -> None:
+    pass
+
+
+def _filter_config(
+    min_assistant_turns: int, min_tool_calls: int, require_reasoning: bool, allow_incomplete: bool,
+    max_tool_chars: int, no_dedupe: bool, no_redact: bool, drop_system: bool,
+) -> FilterConfig:
+    return FilterConfig(
+        min_assistant_turns=min_assistant_turns,
+        min_tool_calls=min_tool_calls,
+        require_reasoning=require_reasoning,
+        require_completed=not allow_incomplete,
+        max_tool_response_chars=max_tool_chars,
+        dedupe=not no_dedupe,
+        redact_secrets=not no_redact,
+        keep_system=not drop_system,
+    )
+
+
+def _since_epoch(days: int | None) -> float | None:
+    return time.time() - days * 86400 if days else None
+
+
+def _print_stats(stats_dict: dict) -> None:
+    t = Table(title="Hermes sessions", show_lines=False)
+    t.add_column("metric")
+    t.add_column("value", justify="right")
+    for key in ("sessions_seen", "kept", "assistant_turns", "tool_calls", "redactions", "input_tokens",
+                "output_tokens", "estimated_cost_usd", "sessions_with_schemas"):
+        t.add_row(key, str(stats_dict[key]))
+    console.print(t)
+    for title, key in (("dropped (reason)", "dropped"), ("by source", "by_source"), ("by model", "by_model")):
+        if stats_dict[key]:
+            t2 = Table(title=title)
+            t2.add_column("key")
+            t2.add_column("n", justify="right")
+            for k, v in sorted(stats_dict[key].items(), key=lambda kv: -kv[1]):
+                t2.add_row(str(k), str(v))
+            console.print(t2)
+    if stats_dict["tool_usage"]:
+        t3 = Table(title="tool usage (kept sessions)")
+        t3.add_column("tool")
+        t3.add_column("calls", justify="right")
+        for k, v in list(stats_dict["tool_usage"].items())[:25]:
+            t3.add_row(k, str(v))
+        console.print(t3)
+
+
+# ---------------------------------------------------------------------------
+@app.command()
+def stats(
+    db: Path | None = typer.Option(None, help="Path to state.db (default: $HERMES_HOME/state.db)."),
+    source: list[str] = typer.Option([], help="Only these sources (cli, telegram, tui, cron, ...)."),
+    exclude_source: list[str] = typer.Option([], help="Exclude these sources."),
+    days: int | None = typer.Option(None, help="Only sessions from the last N days."),
+    min_assistant_turns: int = typer.Option(1),
+    min_tool_calls: int = typer.Option(0),
+    require_reasoning: bool = typer.Option(False),
+    allow_incomplete: bool = typer.Option(False, help="Keep sessions that did not end with an assistant answer."),
+    max_tool_chars: int = typer.Option(6000),
+    no_dedupe: bool = typer.Option(False),
+    no_redact: bool = typer.Option(False),
+    drop_system: bool = typer.Option(False),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Summarize what is in your Hermes history and what would survive the filters."""
+    from .export import collect
+
+    cfg = _filter_config(min_assistant_turns, min_tool_calls, require_reasoning, allow_incomplete,
+                         max_tool_chars, no_dedupe, no_redact, drop_system)
+    with StateDB(db) as sdb:
+        console.print(f"[dim]state.db: {sdb.path}  (schema v{sdb.schema_version()})[/dim]")
+        _, st, schemas = collect(sdb, cfg, source or None, exclude_source or None, _since_epoch(days))
+    d = st.as_dict()
+    d["tool_schemas_known"] = len(schemas)
+    if as_json:
+        console.print_json(json.dumps(d))
+    else:
+        _print_stats(d)
+        console.print(f"[dim]tool schemas available: {len(schemas)}[/dim]")
+
+
+@app.command()
+def export(
+    out: Path = typer.Option(Path("data"), help="Output directory."),
+    fmt: str = typer.Option("messages", help="messages (OpenAI chat + tools) or sharegpt (Hermes trajectory)."),
+    both: bool = typer.Option(False, help="Write both formats."),
+    holdout: float = typer.Option(0.1, help="Fraction of sessions held out for eval (split by session id)."),
+    seed: int = typer.Option(42),
+    db: Path | None = typer.Option(None, help="Path to state.db (default: $HERMES_HOME/state.db)."),
+    source: list[str] = typer.Option([]),
+    exclude_source: list[str] = typer.Option([]),
+    days: int | None = typer.Option(None),
+    min_assistant_turns: int = typer.Option(1),
+    min_tool_calls: int = typer.Option(0),
+    require_reasoning: bool = typer.Option(False),
+    allow_incomplete: bool = typer.Option(False),
+    max_tool_chars: int = typer.Option(6000),
+    no_dedupe: bool = typer.Option(False),
+    no_redact: bool = typer.Option(False, help="Keep credential-looking strings (not recommended)."),
+    drop_system: bool = typer.Option(False, help="Drop the Hermes system prompt from every sample."),
+    tool_schemas: Path | None = typer.Option(None, help="JSON file {name: {name, description, parameters}} overriding tool definitions."),
+) -> None:
+    """Export filtered conversations to JSONL (train + holdout) plus tools.json."""
+    from .export import collect, write_jsonl
+
+    cfg = _filter_config(min_assistant_turns, min_tool_calls, require_reasoning, allow_incomplete,
+                         max_tool_chars, no_dedupe, no_redact, drop_system)
+    with StateDB(db) as sdb:
+        console.print(f"[dim]state.db: {sdb.path}  (schema v{sdb.schema_version()})[/dim]")
+        samples, st, schemas = collect(sdb, cfg, source or None, exclude_source or None, _since_epoch(days))
+    if tool_schemas:
+        override = json.loads(tool_schemas.read_text(encoding="utf-8"))
+        schemas.update({k: v for k, v in override.items()})
+    if not samples:
+        console.print("[red]Nothing to export after filtering.[/red] Try --allow-incomplete or --min-assistant-turns 1.")
+        raise typer.Exit(1)
+    formats = ["messages", "sharegpt"] if both else [fmt]
+    results = {}
+    for f in formats:
+        results[f] = write_jsonl(samples, schemas, out, f, holdout, seed)
+    (out / "stats.json").write_text(json.dumps(st.as_dict(), indent=2), encoding="utf-8")
+    _print_stats(st.as_dict())
+    for f, r in results.items():
+        console.print(f"[green]{f}[/green]: {r['n_train']} train -> {r['train']}, {r['n_holdout']} holdout -> {r['holdout']}")
+    console.print(f"tool schemas: {len(schemas)} -> {results[formats[0]]['tools']}")
+
+
+@app.command()
+def train(
+    data: Path = typer.Option(Path("data/train.messages.jsonl")),
+    output: Path = typer.Option(Path("runs/adapter")),
+    base_model: str = typer.Option("Qwen/Qwen3-4B"),
+    epochs: float = typer.Option(2.0),
+    lr: float = typer.Option(2e-4),
+    max_seq_len: int = typer.Option(4096),
+    lora_r: int = typer.Option(16),
+    lora_alpha: int = typer.Option(32),
+    batch_size: int = typer.Option(1),
+    grad_accum: int = typer.Option(8),
+    no_4bit: bool = typer.Option(False, help="Load the base model in bf16/fp16 instead of 4-bit."),
+    max_samples: int | None = typer.Option(None),
+    drop_reasoning: bool = typer.Option(False, help="Train without <think> content."),
+    dry_run: bool = typer.Option(False, help="Render and tokenize only; print length stats and one example."),
+) -> None:
+    """QLoRA fine-tune a base model on the exported conversations."""
+    from .train import TrainConfig
+    from .train import dry_run as _dry
+    from .train import train as _train
+
+    cfg = TrainConfig(
+        data=data, output=output, base_model=base_model, epochs=epochs, learning_rate=lr,
+        max_seq_len=max_seq_len, lora_r=lora_r, lora_alpha=lora_alpha, batch_size=batch_size,
+        grad_accum=grad_accum, load_4bit=not no_4bit, max_samples=max_samples, drop_reasoning=drop_reasoning,
+    )
+    if dry_run:
+        stats_ = _dry(cfg)
+        example = stats_.pop("example", "")
+        console.print_json(json.dumps(stats_))
+        console.rule("first rendered example (truncated)")
+        console.print(example)
+        return
+    summary = _train(cfg)
+    console.print_json(json.dumps(summary))
+
+
+@app.command()
+def serve(
+    adapter: Path = typer.Option(Path("runs/adapter")),
+    name: str = typer.Option("hermes-distill", help="Ollama model name."),
+    base_model: str | None = typer.Option(None, help="Defaults to the adapter's recorded base."),
+    merged_dir: Path = typer.Option(Path("models/merged")),
+    gguf: Path = typer.Option(Path("models/hermes-distill.gguf")),
+    quant: str = typer.Option("Q4_K_M", help="llama.cpp quant type, or f16."),
+    llama_cpp: Path | None = typer.Option(None, help="Path to a llama.cpp checkout."),
+    num_ctx: int = typer.Option(32768),
+    skip_merge: bool = typer.Option(False),
+    skip_gguf: bool = typer.Option(False),
+    skip_ollama: bool = typer.Option(False),
+) -> None:
+    """Merge -> GGUF -> ollama create, then print the Hermes config to use it."""
+    from .serve import hermes_config_snippet, merge_adapter, ollama_create, to_gguf
+
+    if not skip_merge:
+        console.print(f"merging {adapter} into {merged_dir} ...")
+        merge_adapter(adapter, base_model, merged_dir)
+    if not skip_gguf:
+        console.print(f"converting {merged_dir} -> {gguf} ({quant}) ...")
+        to_gguf(merged_dir, gguf, llama_cpp, quant)
+    if not skip_ollama:
+        console.print(f"ollama create {name} ...")
+        ollama_create(name, gguf, num_ctx)
+    console.rule("add this to Hermes")
+    console.print(hermes_config_snippet(name))
+
+
+@app.command("hermes-config")
+def hermes_config(
+    name: str = typer.Option("hermes-distill"),
+    base_url: str = typer.Option("http://localhost:11434/v1"),
+) -> None:
+    """Print the config.yaml snippet that points Hermes at a local model."""
+    from .serve import hermes_config_snippet
+
+    console.print(hermes_config_snippet(name, base_url))
+
+
+@app.command("eval")
+def eval_cmd(
+    data: Path = typer.Option(Path("data/holdout.messages.jsonl")),
+    model: str = typer.Option(..., help="Model name at the endpoint (e.g. hermes-distill, qwen3:4b, gpt-4.1)."),
+    base_url: str = typer.Option("http://localhost:11434/v1"),
+    api_key: str = typer.Option("no-key", envvar="HERMES_DISTILL_EVAL_KEY"),
+    max_samples: int | None = typer.Option(None),
+    max_turns_per_sample: int = typer.Option(6),
+    max_tokens: int = typer.Option(512),
+    out: Path | None = typer.Option(None, help="Write the result JSON here."),
+) -> None:
+    """Next-action accuracy of a model against held-out Hermes sessions."""
+    from .evaluate import EvalConfig, run_eval
+
+    cfg = EvalConfig(data=data, model=model, base_url=base_url, api_key=api_key, max_samples=max_samples,
+                     max_turns_per_sample=max_turns_per_sample, max_tokens=max_tokens)
+    with console.status(f"evaluating {model} ..."):
+        res = run_eval(cfg)
+    d = res.as_dict()
+    d["model"] = model
+    d["data"] = str(data)
+    t = Table(title=f"next-action eval: {model}")
+    t.add_column("metric")
+    t.add_column("value", justify="right")
+    for k in ("turns", "action_acc", "tool_turns", "tool_acc", "args_exact", "json_valid", "errors", "avg_latency_s"):
+        t.add_row(k, str(d[k]))
+    console.print(t)
+    if out:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(d, indent=2), encoding="utf-8")
+        console.print(f"[dim]wrote {out}[/dim]")
+
+
+@app.command()
+def where() -> None:
+    """Print the state.db path hermes-distill will read."""
+    p = default_state_db()
+    console.print(f"{p}  {'(exists)' if p.exists() else '(missing)'}")
+
+
+if __name__ == "__main__":
+    app()
