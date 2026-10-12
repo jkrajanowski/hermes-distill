@@ -83,6 +83,8 @@ def collect(
     include_system: bool = True,
     tools_from_hermes: bool = True,
     tools_scope: str = "used",
+    system_mode: str = "keep",
+    before: float | None = None,
 ) -> tuple[list[Sample], ExportStats, dict[str, dict[str, Any]]]:
     """Read every qualifying session and return samples, stats, and the merged tool schema registry.
 
@@ -90,11 +92,15 @@ def collect(
     install's ``get_tool_definitions()``, then inference from observed calls.
     ``tools_scope`` decides which tools each sample lists: ``used`` (only tools it called) or
     ``all`` (every tool the Hermes install exposes, closer to what the agent sees at inference).
+    ``system_mode``: ``keep`` the full Hermes system prompt (~4k tokens), ``short`` keeps only its
+    first paragraph, ``drop`` removes it. Shorter prompts train far cheaper on small GPUs.
     """
     stats = ExportStats()
     samples: list[Sample] = []
     pinned: dict[str, dict[str, Any]] = {}
     for session in db.sessions(sources=sources, exclude_sources=exclude_sources, since=since):
+        if before is not None and session.started_at >= before:
+            continue
         stats.sessions_seen += 1
         real = schemas_from_session(session)
         if real:
@@ -107,6 +113,7 @@ def collect(
         if result.messages is None:
             stats.dropped[result.reason or "unknown"] += 1
             continue
+        result.messages = apply_system_mode(result.messages, system_mode)
         used = sorted({tc["function"]["name"] for m in result.messages for tc in (m.get("tool_calls") or [])})
         for name in used:
             stats.tool_usage[name] += sum(
@@ -139,6 +146,23 @@ def collect(
             if not s.session.tool_schemas:
                 s.tool_names = sorted(set(s.tool_names) | set(hermes_live))
     return samples, stats, schemas
+
+
+SHORT_SYSTEM_MAX_CHARS = 700
+
+
+def apply_system_mode(messages: list[dict[str, Any]], mode: str) -> list[dict[str, Any]]:
+    if mode == "keep" or not messages or messages[0].get("role") != "system":
+        return messages
+    if mode == "drop":
+        return messages[1:]
+    if mode == "short":
+        text = (messages[0].get("content") or "").strip()
+        first = text.split("\n\n", 1)[0].strip()
+        if len(first) > SHORT_SYSTEM_MAX_CHARS:
+            first = first[:SHORT_SYSTEM_MAX_CHARS].rsplit(" ", 1)[0] + " ..."
+        return [{"role": "system", "content": first}, *messages[1:]]
+    raise ValueError(f"unknown system_mode {mode!r}")
 
 
 def _split_key(session_id: str, seed: int) -> float:

@@ -153,18 +153,23 @@ def export(
     tool_schemas: Path | None = typer.Option(None, help="JSON file {name: {name, description, parameters}} overriding tool definitions."),
     tools_from_hermes: bool = typer.Option(True, help="Pull real tool schemas from the local Hermes install."),
     tools_scope: str = typer.Option("used", help="Tools listed per sample: 'used' (only called tools) or 'all' (every Hermes tool)."),
+    system_mode: str = typer.Option("keep", help="System prompt per sample: keep (full, ~4k tokens), short (first paragraph), drop."),
+    before: str | None = typer.Option(None, help="Only sessions started before this ISO datetime or epoch."),
 ) -> None:
     """Export filtered conversations to JSONL (train + holdout) plus tools.json."""
     from .export import collect, write_jsonl
 
     if tools_scope not in ("used", "all"):
         raise typer.BadParameter("--tools-scope must be 'used' or 'all'")
+    if system_mode not in ("keep", "short", "drop"):
+        raise typer.BadParameter("--system-mode must be keep, short or drop")
     cfg = _filter_config(min_assistant_turns, min_tool_calls, require_reasoning, allow_incomplete,
                          max_tool_chars, no_dedupe, no_redact, drop_system)
     with StateDB(db) as sdb:
         console.print(f"[dim]state.db: {sdb.path}  (schema v{sdb.schema_version()})[/dim]")
         samples, st, schemas = collect(sdb, cfg, source or None, exclude_source or None, _since_epoch(days, after),
-                                       tools_from_hermes=tools_from_hermes, tools_scope=tools_scope)
+                                       tools_from_hermes=tools_from_hermes, tools_scope=tools_scope,
+                                       system_mode=system_mode, before=_since_epoch(None, before))
     if tool_schemas:
         override = json.loads(tool_schemas.read_text(encoding="utf-8"))
         schemas.update({k: v for k, v in override.items()})
@@ -189,7 +194,7 @@ def train(
     base_model: str = typer.Option("Qwen/Qwen3-4B"),
     epochs: float = typer.Option(2.0),
     lr: float = typer.Option(2e-4),
-    max_seq_len: int = typer.Option(8192, help="Hermes system prompts alone are ~4k tokens; 8k keeps most sessions intact."),
+    max_seq_len: int = typer.Option(4096, help="4k fits an 8 GB GPU with 'export --system-mode short'; 8k needs ~24 GB."),
     lora_r: int = typer.Option(16),
     lora_alpha: int = typer.Option(32),
     batch_size: int = typer.Option(1),

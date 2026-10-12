@@ -13,7 +13,10 @@ Design notes
   masking needs ``{% generation %}`` markers in the template, which most
   templates lack; it is on the roadmap.
 * Defaults target a single 8 GB consumer GPU: 4-bit base, LoRA r=16 on all
-  linear layers, gradient checkpointing, batch 1 x grad-accum 8, 4k context.
+  linear layers, gradient checkpointing, batch 1 x grad-accum 8. Context is the
+  lever that matters: the logits tensor is ``seq_len x vocab (152k)``, so 8k
+  tokens costs ~5 GB on its own. On 8 GB use 4k context with
+  ``export --system-mode short``; on 24 GB, 8k with the full system prompt.
 """
 
 from __future__ import annotations
@@ -32,7 +35,7 @@ class TrainConfig:
     base_model: str = "Qwen/Qwen3-4B"
     epochs: float = 2.0
     learning_rate: float = 2e-4
-    max_seq_len: int = 8192
+    max_seq_len: int = 4096
     lora_r: int = 16
     lora_alpha: int = 32
     lora_dropout: float = 0.05
@@ -149,11 +152,14 @@ def train(cfg: TrainConfig) -> dict[str, Any]:
             bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.bfloat16 if bf16 else torch.float16,
         )
+    # Pin everything to one GPU: device_map="auto" silently offloads layers to CPU when VRAM is
+    # tight, which turns a 30-minute run into hours and eats host RAM. Better to OOM loudly.
+    device_map = {"": 0} if torch.cuda.is_available() else "cpu"
     model = AutoModelForCausalLM.from_pretrained(
         cfg.base_model,
         quantization_config=quant,
         torch_dtype=torch.bfloat16 if bf16 else torch.float16,
-        device_map="auto",
+        device_map=device_map,
         attn_implementation="sdpa",
     )
     model.config.use_cache = False
