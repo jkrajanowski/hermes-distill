@@ -25,6 +25,9 @@ RESULTS = HERE / (sys.argv[3] if len(sys.argv) > 3 else "results_big.jsonl")
 LIMIT = int(sys.argv[4]) if len(sys.argv) > 4 else 10_000
 TIMEOUT = 480
 RETRY_MARKERS = ("rate", "429", "overloaded", "529", "timeout", "connection")
+# Only the toolsets the tasks need. Cuts the per-call prompt from ~24k to ~7.5k tokens, which is the
+# main cost lever on routes without prompt caching. Override with HERMES_TOOLSETS=... or empty to disable.
+TOOLSETS = os.environ.get("HERMES_TOOLSETS", "terminal,file,code_execution")
 
 
 def run_one(idx: int, item: dict, sandbox: Path) -> dict:
@@ -33,8 +36,9 @@ def run_one(idx: int, item: dict, sandbox: Path) -> dict:
         attempts += 1
         t0 = time.time()
         try:
-            proc = subprocess.run([str(HERMES), "-z", item["prompt"]], cwd=str(sandbox), capture_output=True, text=True,
-                                  timeout=TIMEOUT, encoding="utf-8", errors="replace")
+            cmd = [str(HERMES)] + (["-t", TOOLSETS] if TOOLSETS else []) + ["-z", item["prompt"]]
+            proc = subprocess.run(cmd, cwd=str(sandbox), capture_output=True, text=True, timeout=TIMEOUT,
+                                  encoding="utf-8", errors="replace")
             rc, out, err = proc.returncode, proc.stdout, proc.stderr
         except subprocess.TimeoutExpired:
             rc, out, err = -1, "", "timeout"
