@@ -41,18 +41,23 @@ def _find_llama_cpp(explicit: Path | None) -> Path:
     )
 
 
-def to_gguf(merged_dir: Path, out_file: Path, llama_cpp: Path | None = None, quant: str = "Q4_K_M") -> Path:
-    """HF safetensors -> GGUF (f16) -> quantized GGUF via llama.cpp tools."""
+_CONVERTER_OUTTYPES = {"f32", "f16", "bf16", "q8_0"}
+
+
+def to_gguf(merged_dir: Path, out_file: Path, llama_cpp: Path | None = None, quant: str = "q8_0") -> Path:
+    """HF safetensors -> GGUF via llama.cpp's converter.
+
+    ``f16``/``bf16``/``q8_0`` need only the Python converter (no C++ build). Other quants
+    (``Q4_K_M`` etc.) go through an f16 GGUF and the ``llama-quantize`` binary.
+    """
     repo = _find_llama_cpp(llama_cpp)
     out_file.parent.mkdir(parents=True, exist_ok=True)
-    f16 = out_file.with_suffix(".f16.gguf")
-    subprocess.run(
-        [sys.executable, str(repo / "convert_hf_to_gguf.py"), str(merged_dir), "--outfile", str(f16), "--outtype", "f16"],
-        check=True,
-    )
-    if quant.lower() in ("f16", "none"):
-        f16.replace(out_file)
+    converter = [sys.executable, str(repo / "convert_hf_to_gguf.py"), str(merged_dir)]
+    if quant.lower() in _CONVERTER_OUTTYPES:
+        subprocess.run(converter + ["--outfile", str(out_file), "--outtype", quant.lower()], check=True)
         return out_file
+    f16 = out_file.with_suffix(".f16.gguf")
+    subprocess.run(converter + ["--outfile", str(f16), "--outtype", "f16"], check=True)
     quantize = shutil.which("llama-quantize") or next(
         (str(p) for p in [repo / "build" / "bin" / "llama-quantize", repo / "build" / "bin" / "llama-quantize.exe",
                           repo / "llama-quantize", repo / "llama-quantize.exe"] if p.exists()),

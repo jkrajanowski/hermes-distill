@@ -217,7 +217,7 @@ def serve(
     base_model: str | None = typer.Option(None, help="Defaults to the adapter's recorded base."),
     merged_dir: Path = typer.Option(Path("models/merged")),
     gguf: Path = typer.Option(Path("models/hermes-distill.gguf")),
-    quant: str = typer.Option("Q4_K_M", help="llama.cpp quant type, or f16."),
+    quant: str = typer.Option("q8_0", help="f16/bf16/q8_0 need only the Python converter; Q4_K_M etc. need llama-quantize."),
     llama_cpp: Path | None = typer.Option(None, help="Path to a llama.cpp checkout."),
     num_ctx: int = typer.Option(32768),
     skip_merge: bool = typer.Option(False),
