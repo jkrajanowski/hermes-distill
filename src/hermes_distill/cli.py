@@ -61,9 +61,13 @@ def _print_stats(stats_dict: dict) -> None:
     t.add_column("metric")
     t.add_column("value", justify="right")
     for key in ("sessions_seen", "kept", "assistant_turns", "tool_calls", "redactions", "input_tokens",
-                "output_tokens", "estimated_cost_usd", "sessions_with_schemas"):
+                "cache_tokens", "output_tokens", "estimated_cost_usd", "sessions_with_schemas"):
         t.add_row(key, str(stats_dict[key]))
     console.print(t)
+    if stats_dict.get("schema_sources"):
+        console.print("tool schema sources: " + ", ".join(f"{k}={v}" for k, v in stats_dict["schema_sources"].items()))
+    if stats_dict.get("hermes_tools_error"):
+        console.print(f"[yellow]live Hermes tool schemas unavailable: {stats_dict['hermes_tools_error']}[/yellow]")
     for title, key in (("dropped (reason)", "dropped"), ("by source", "by_source"), ("by model", "by_model")):
         if stats_dict[key]:
             t2 = Table(title=title)
@@ -96,6 +100,7 @@ def stats(
     no_dedupe: bool = typer.Option(False),
     no_redact: bool = typer.Option(False),
     drop_system: bool = typer.Option(False),
+    tools_from_hermes: bool = typer.Option(True, help="Pull real tool schemas from the local Hermes install."),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:
     """Summarize what is in your Hermes history and what would survive the filters."""
@@ -105,7 +110,8 @@ def stats(
                          max_tool_chars, no_dedupe, no_redact, drop_system)
     with StateDB(db) as sdb:
         console.print(f"[dim]state.db: {sdb.path}  (schema v{sdb.schema_version()})[/dim]")
-        _, st, schemas = collect(sdb, cfg, source or None, exclude_source or None, _since_epoch(days))
+        _, st, schemas = collect(sdb, cfg, source or None, exclude_source or None, _since_epoch(days),
+                                 tools_from_hermes=tools_from_hermes)
     d = st.as_dict()
     d["tool_schemas_known"] = len(schemas)
     if as_json:
@@ -135,15 +141,20 @@ def export(
     no_redact: bool = typer.Option(False, help="Keep credential-looking strings (not recommended)."),
     drop_system: bool = typer.Option(False, help="Drop the Hermes system prompt from every sample."),
     tool_schemas: Path | None = typer.Option(None, help="JSON file {name: {name, description, parameters}} overriding tool definitions."),
+    tools_from_hermes: bool = typer.Option(True, help="Pull real tool schemas from the local Hermes install."),
+    tools_scope: str = typer.Option("used", help="Tools listed per sample: 'used' (only called tools) or 'all' (every Hermes tool)."),
 ) -> None:
     """Export filtered conversations to JSONL (train + holdout) plus tools.json."""
     from .export import collect, write_jsonl
 
+    if tools_scope not in ("used", "all"):
+        raise typer.BadParameter("--tools-scope must be 'used' or 'all'")
     cfg = _filter_config(min_assistant_turns, min_tool_calls, require_reasoning, allow_incomplete,
                          max_tool_chars, no_dedupe, no_redact, drop_system)
     with StateDB(db) as sdb:
         console.print(f"[dim]state.db: {sdb.path}  (schema v{sdb.schema_version()})[/dim]")
-        samples, st, schemas = collect(sdb, cfg, source or None, exclude_source or None, _since_epoch(days))
+        samples, st, schemas = collect(sdb, cfg, source or None, exclude_source or None, _since_epoch(days),
+                                       tools_from_hermes=tools_from_hermes, tools_scope=tools_scope)
     if tool_schemas:
         override = json.loads(tool_schemas.read_text(encoding="utf-8"))
         schemas.update({k: v for k, v in override.items()})
@@ -168,7 +179,7 @@ def train(
     base_model: str = typer.Option("Qwen/Qwen3-4B"),
     epochs: float = typer.Option(2.0),
     lr: float = typer.Option(2e-4),
-    max_seq_len: int = typer.Option(4096),
+    max_seq_len: int = typer.Option(8192, help="Hermes system prompts alone are ~4k tokens; 8k keeps most sessions intact."),
     lora_r: int = typer.Option(16),
     lora_alpha: int = typer.Option(32),
     batch_size: int = typer.Option(1),
@@ -270,6 +281,31 @@ def eval_cmd(
     if out:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(d, indent=2), encoding="utf-8")
+        console.print(f"[dim]wrote {out}[/dim]")
+
+
+@app.command()
+def tools(
+    out: Path | None = typer.Option(None, help="Write {name: schema} JSON here (usable as --tool-schemas)."),
+) -> None:
+    """Dump the tool definitions of the local Hermes install."""
+    from .hermes_tools import dump_hermes_tool_schemas, find_hermes_install, find_hermes_python
+
+    install = find_hermes_install()
+    console.print(f"[dim]install: {install}  python: {find_hermes_python(install) if install else None}[/dim]")
+    schemas, err = dump_hermes_tool_schemas()
+    if err:
+        console.print(f"[red]{err}[/red]")
+        raise typer.Exit(1)
+    t = Table(title=f"{len(schemas)} Hermes tools")
+    t.add_column("tool")
+    t.add_column("params")
+    for name, s in sorted(schemas.items()):
+        t.add_row(name, ", ".join((s["parameters"].get("properties") or {}).keys()))
+    console.print(t)
+    if out:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(schemas, indent=2, ensure_ascii=False), encoding="utf-8")
         console.print(f"[dim]wrote {out}[/dim]")
 
 

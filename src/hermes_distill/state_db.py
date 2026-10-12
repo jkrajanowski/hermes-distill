@@ -62,6 +62,8 @@ class Session:
     tool_call_count: int
     input_tokens: int
     output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
     estimated_cost_usd: float
     title: str | None
     system_prompt: str | None
@@ -240,7 +242,9 @@ class StateDB:
             "COALESCE(s.message_count, 0)", "COALESCE(s.tool_call_count, 0)",
             "COALESCE(s.input_tokens, 0)", "COALESCE(s.output_tokens, 0)",
             "COALESCE(s.estimated_cost_usd, 0)", "s.title", "s.parent_session_id",
-            "s.system_prompt",
+            "COALESCE(s.cache_read_tokens, 0)" if "cache_read_tokens" in cols else "0",
+            "COALESCE(s.cache_write_tokens, 0)" if "cache_write_tokens" in cols else "0",
+            "s.system_prompt",  # index 15
             "p.prompt" if has_prompt_hash else "NULL",
             # tool_names may itself be a hash into system_prompts (content-addressed tool list)
             "COALESCE(tp.prompt, s.tool_names)" if (has_tool_names and has_prompts) else (
@@ -268,14 +272,14 @@ class StateDB:
         sql += " WHERE " + " AND ".join(where) + " ORDER BY s.started_at"
         out: list[Session] = []
         for r in self.conn.execute(sql, params):
-            names, schemas = _resolve_tool_names(r[15])
+            names, schemas = _resolve_tool_names(r[17])
             out.append(
                 Session(
                     id=r[0], source=r[1] or "unknown", model=r[2], started_at=r[3], ended_at=r[4],
                     end_reason=r[5], message_count=r[6], tool_call_count=r[7], input_tokens=r[8],
                     output_tokens=r[9], estimated_cost_usd=float(r[10] or 0), title=r[11],
-                    parent_session_id=r[12], system_prompt=r[13] or r[14],
-                    tool_names=names, tool_schemas=schemas,
+                    parent_session_id=r[12], cache_read_tokens=r[13], cache_write_tokens=r[14],
+                    system_prompt=r[15] or r[16], tool_names=names, tool_schemas=schemas,
                 )
             )
         return out

@@ -20,6 +20,7 @@ from .convert import (
     to_sharegpt,
 )
 from .filters import FilterConfig, apply_filters
+from .hermes_tools import dump_hermes_tool_schemas, merge_schemas
 from .state_db import Session, StateDB
 
 
@@ -46,8 +47,11 @@ class ExportStats:
     tool_calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_tokens: int = 0
     estimated_cost_usd: float = 0.0
     sessions_with_schemas: int = 0
+    schema_sources: Counter = field(default_factory=Counter)
+    hermes_tools_error: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -61,9 +65,12 @@ class ExportStats:
             "assistant_turns": self.assistant_turns,
             "tool_calls": self.tool_calls,
             "input_tokens": self.input_tokens,
+            "cache_tokens": self.cache_tokens,
             "output_tokens": self.output_tokens,
             "estimated_cost_usd": round(self.estimated_cost_usd, 4),
             "sessions_with_schemas": self.sessions_with_schemas,
+            "schema_sources": dict(self.schema_sources),
+            "hermes_tools_error": self.hermes_tools_error,
         }
 
 
@@ -74,18 +81,26 @@ def collect(
     exclude_sources: Iterable[str] | None = None,
     since: float | None = None,
     include_system: bool = True,
+    tools_from_hermes: bool = True,
+    tools_scope: str = "used",
 ) -> tuple[list[Sample], ExportStats, dict[str, dict[str, Any]]]:
-    """Read every qualifying session and return samples, stats, and the merged tool schema registry."""
+    """Read every qualifying session and return samples, stats, and the merged tool schema registry.
+
+    Schema priority: the session's own tool pin (what the teacher saw), then the live Hermes
+    install's ``get_tool_definitions()``, then inference from observed calls.
+    ``tools_scope`` decides which tools each sample lists: ``used`` (only tools it called) or
+    ``all`` (every tool the Hermes install exposes, closer to what the agent sees at inference).
+    """
     stats = ExportStats()
     samples: list[Sample] = []
-    schemas: dict[str, dict[str, Any]] = {}
+    pinned: dict[str, dict[str, Any]] = {}
     for session in db.sessions(sources=sources, exclude_sources=exclude_sources, since=since):
         stats.sessions_seen += 1
         real = schemas_from_session(session)
         if real:
             stats.sessions_with_schemas += 1
             for name, schema in real.items():
-                schemas.setdefault(name, schema)
+                pinned.setdefault(name, schema)
         rows = db.messages(session.id)
         messages = to_openai_messages(session, rows, include_system=include_system)
         result = apply_filters(messages, cfg)
@@ -108,12 +123,21 @@ def collect(
         stats.assistant_turns += result.assistant_turns
         stats.tool_calls += result.tool_calls
         stats.input_tokens += session.input_tokens
+        stats.cache_tokens += session.cache_read_tokens + session.cache_write_tokens
         stats.output_tokens += session.output_tokens
         stats.estimated_cost_usd += session.estimated_cost_usd
-    # Fill schemas for tools we only ever saw being called.
+    hermes_live: dict[str, dict[str, Any]] = {}
+    if tools_from_hermes:
+        hermes_live, err = dump_hermes_tool_schemas()
+        stats.hermes_tools_error = err
     inferred = infer_tool_schemas([s.messages for s in samples])
-    for name, schema in inferred.items():
-        schemas.setdefault(name, schema)
+    schemas = merge_schemas(pinned, hermes_live, inferred)
+    for name in schemas:
+        stats.schema_sources["pin" if name in pinned else "hermes" if name in hermes_live else "inferred"] += 1
+    if tools_scope == "all" and hermes_live:
+        for s in samples:
+            if not s.session.tool_schemas:
+                s.tool_names = sorted(set(s.tool_names) | set(hermes_live))
     return samples, stats, schemas
 
 

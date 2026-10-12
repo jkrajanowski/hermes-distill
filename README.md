@@ -16,9 +16,9 @@ Why: Hermes users on cheap VPSes spend most of their money on cron jobs and rout
 that has seen a few hundred of your own sessions handles those for free, on a laptop GPU, with your data
 never leaving the machine.
 
-> Status: **alpha**. `export` and `stats` are tested against the real Hermes schema (v25+).
-> `train`, `serve` and `eval` are implemented and wired up but not yet validated on a full run.
-> See [Roadmap](#roadmap).
+> Status: **alpha**. `export`, `stats` and `tools` run against a live Hermes install (schema v31,
+> Hermes 0.21.x) and the training dry-run renders correctly through the Qwen3 chat template.
+> `train`, `serve` and `eval` are implemented but not yet validated on a full run. See [Roadmap](#roadmap).
 
 ## Install
 
@@ -45,9 +45,10 @@ hermes-distill stats
 hermes-distill export --out data --min-tool-calls 1 --both
 
 # 3. Check token lengths and look at one rendered example before spending GPU time
+#    (Hermes' system prompt alone is ~4k tokens; the default 8k context keeps most sessions whole)
 hermes-distill train --dry-run --base-model Qwen/Qwen3-4B
 
-# 4. QLoRA on a single 8 GB GPU (defaults: 4-bit base, r=16, 4k context)
+# 4. QLoRA on a single 8 GB GPU (defaults: 4-bit base, r=16, 8k context)
 hermes-distill train --base-model Qwen/Qwen3-4B --epochs 2 --output runs/qwen3-4b
 
 # 5. Merge, convert to GGUF, register with Ollama, print the Hermes config
@@ -76,7 +77,8 @@ model:
 |---|---|
 | Locate | Same rule as Hermes: `$HERMES_HOME`, else `~/.hermes` on Linux/macOS or `%LOCALAPPDATA%\hermes` on Windows. `hermes-distill where` prints it. |
 | Snapshot | Copies `state.db` with the SQLite backup API, so a running gateway is never touched and the WAL is included. |
-| Read | Sessions and `active = 1` messages; resolves content-addressed system prompts and the per-session **tool-schema pin** Hermes stores, so training uses the real tool definitions, not guesses. Falls back to schema inference from observed calls. |
+| Read | Sessions and `active = 1` messages; resolves content-addressed system prompts and the per-session **tool-schema pin** Hermes stores for some session kinds. |
+| Tool schemas | Priority: the session pin (what the teacher saw) → the live Hermes install's `get_tool_definitions()`, run inside Hermes' own venv (`hermes-distill tools` shows it) → inference from observed calls. `--tools-scope all` lists every Hermes tool per sample instead of only the ones it called. |
 | Repair | Aligns tool results to their calls by `tool_call_id`, drops orphan results, trims dangling trailing calls so every sample ends with an assistant answer. |
 | Clean | Truncates giant tool outputs (head + tail), drops oversize sessions, dedupes by content hash. |
 | Redact | Replaces API keys, bearer tokens, PEM blocks and `KEY=value` secrets with `[REDACTED:kind]`. |

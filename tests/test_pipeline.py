@@ -159,10 +159,25 @@ def test_filters_redact_trim_and_repair():
     assert [m["role"] for m in repaired] == ["user", "assistant", "tool"]
 
 
+def test_schema_merge_priority():
+    from hermes_distill.hermes_tools import merge_schemas, normalize_defs
+
+    live = normalize_defs([{"type": "function", "function": {"name": "terminal", "description": "live",
+                                                             "parameters": {"type": "object", "properties": {}}}},
+                           {"name": "web_search", "parameters": {"type": "object", "properties": {"q": {}}}}])
+    assert set(live) == {"terminal", "web_search"} and live["web_search"]["description"] == ""
+    merged = merge_schemas({"terminal": {"name": "terminal", "description": "pin", "parameters": {}}}, live,
+                           {"terminal": {"name": "terminal", "description": "inferred", "parameters": {}},
+                            "read_file": {"name": "read_file", "description": "inferred", "parameters": {}}})
+    assert merged["terminal"]["description"] == "pin"
+    assert merged["web_search"]["description"] == ""
+    assert merged["read_file"]["description"] == "inferred"
+
+
 def test_collect_and_write(db_path: Path, tmp_path: Path):
     cfg = FilterConfig()
     with StateDB(db_path) as db:
-        samples, stats, schemas = collect(db, cfg)
+        samples, stats, schemas = collect(db, cfg, tools_from_hermes=False)
     ids = sorted(s.session.id for s in samples)
     assert ids == ["A", "B"], stats.as_dict()           # C deduped against A
     assert stats.dropped["duplicate"] == 1
