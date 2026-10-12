@@ -70,6 +70,20 @@ def to_gguf(merged_dir: Path, out_file: Path, llama_cpp: Path | None = None, qua
     return out_file
 
 
+def find_ollama() -> str | None:
+    """``ollama`` on PATH, else the default per-user install locations."""
+    found = shutil.which("ollama")
+    if found:
+        return found
+    candidates = [
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe",
+        Path("/usr/local/bin/ollama"),
+        Path("/opt/homebrew/bin/ollama"),
+        Path.home() / ".ollama" / "bin" / "ollama",
+    ]
+    return next((str(c) for c in candidates if c.exists()), None)
+
+
 def ollama_create(name: str, gguf: Path, num_ctx: int = 32768, workdir: Path | None = None) -> Path:
     """Write a Modelfile next to the GGUF and run ``ollama create``."""
     workdir = workdir or gguf.parent
@@ -81,9 +95,10 @@ def ollama_create(name: str, gguf: Path, num_ctx: int = 32768, workdir: Path | N
         "PARAMETER top_p 0.95\n",
         encoding="utf-8",
     )
-    if not shutil.which("ollama"):
-        raise SystemExit("ollama is not on PATH. Install it from https://ollama.com and re-run.")
-    subprocess.run(["ollama", "create", name, "-f", str(modelfile)], check=True)
+    ollama = find_ollama()
+    if not ollama:
+        raise SystemExit("ollama not found on PATH or in its default install location. Install it from https://ollama.com.")
+    subprocess.run([ollama, "create", name, "-f", str(modelfile)], check=True)
     return modelfile
 
 
