@@ -185,6 +185,19 @@ def test_collect_and_write(db_path: Path, tmp_path: Path):
     assert rec2["conversations"][0]["from"] == "system" and rec2["completed"] is True
 
 
+def test_default_home_resolution(monkeypatch: pytest.MonkeyPatch):
+    from hermes_distill import state_db
+
+    monkeypatch.setenv("HERMES_HOME", "/tmp/custom-hermes")
+    assert state_db.default_state_db() == Path("/tmp/custom-hermes") / "state.db"
+    monkeypatch.delenv("HERMES_HOME")
+    monkeypatch.setattr(state_db.sys, "platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\x\AppData\Local")
+    assert state_db.default_state_db() == Path(r"C:\Users\x\AppData\Local") / "hermes" / "state.db"
+    monkeypatch.setattr(state_db.sys, "platform", "linux")
+    assert state_db.default_state_db() == Path.home() / ".hermes" / "state.db"
+
+
 def test_apply_filters_reasons():
     cfg = FilterConfig(min_tool_calls=1)
     res = apply_filters([{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}], cfg)

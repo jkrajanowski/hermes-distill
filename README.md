@@ -74,6 +74,7 @@ model:
 
 | Step | Detail |
 |---|---|
+| Locate | Same rule as Hermes: `$HERMES_HOME`, else `~/.hermes` on Linux/macOS or `%LOCALAPPDATA%\hermes` on Windows. `hermes-distill where` prints it. |
 | Snapshot | Copies `state.db` with the SQLite backup API, so a running gateway is never touched and the WAL is included. |
 | Read | Sessions and `active = 1` messages; resolves content-addressed system prompts and the per-session **tool-schema pin** Hermes stores, so training uses the real tool definitions, not guesses. Falls back to schema inference from observed calls. |
 | Repair | Aligns tool results to their calls by `tool_call_id`, drops orphan results, trims dangling trailing calls so every sample ends with an assistant answer. |

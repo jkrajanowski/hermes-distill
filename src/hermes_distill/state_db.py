@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -31,10 +32,22 @@ from typing import Any
 CONTENT_JSON_PREFIX = "\x00json:"
 
 
+def default_hermes_home() -> Path:
+    """Mirror ``hermes_constants.get_hermes_home``: ``$HERMES_HOME`` wins, else the platform default
+    (``%LOCALAPPDATA%\\hermes`` on Windows, ``~/.hermes`` elsewhere, plus ``HERMES_DATA_DIR_SUFFIX``)."""
+    override = os.environ.get("HERMES_HOME", "").strip()
+    if override:
+        return Path(os.path.expanduser(os.path.expandvars(override)))
+    suffix = os.environ.get("HERMES_DATA_DIR_SUFFIX", "")
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA", "").strip()
+        base = Path(local) if local else Path.home() / "AppData" / "Local"
+        return base / ("hermes" + suffix)
+    return Path.home() / (".hermes" + suffix)
+
+
 def default_state_db() -> Path:
-    home = os.environ.get("HERMES_HOME")
-    base = Path(home).expanduser() if home else Path.home() / ".hermes"
-    return base / "state.db"
+    return default_hermes_home() / "state.db"
 
 
 @dataclass
