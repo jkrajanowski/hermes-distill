@@ -1,8 +1,4 @@
-"""Run many prompts through Hermes one-shots with per-worker sandboxes, retries and resume.
-
-Usage: python scripts/datagen/run_sessions.py [workers] [prompts.jsonl] [results.jsonl] [limit]
-Each session lands in Hermes' state.db like normal usage; export them with `hermes-distill export`.
-"""
+﻿"""Run many prompts through Hermes one-shots with per-worker sandboxes, retries and resume."""
 
 from __future__ import annotations
 
@@ -51,9 +47,15 @@ def run_one(idx: int, item: dict, sandbox: Path) -> dict:
 
 
 def main() -> None:
-    sandboxes = [HERE / f"sandbox_{i}" for i in range(WORKERS)]
-    for sb in sandboxes:
-        build(sb)
+    sandboxes = []
+    for i in range(WORKERS):
+        sb = HERE / f"sandbox_{i}"
+        try:
+            build(sb)
+        except PermissionError:  # a stale process still holds the old copy; use a fresh name
+            sb = HERE / f"sandbox_{i}_{int(time.time())}"
+            build(sb)
+        sandboxes.append(sb)
     prompts = [json.loads(line) for line in PROMPTS.read_text(encoding="utf-8").splitlines() if line.strip()][:LIMIT]
     done: set[int] = set()
     if RESULTS.exists():
@@ -80,3 +82,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
