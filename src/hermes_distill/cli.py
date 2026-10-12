@@ -203,7 +203,7 @@ def train(
     max_samples: int | None = typer.Option(None),
     drop_reasoning: bool = typer.Option(False, help="Train without <think> content."),
     no_chunked_loss: bool = typer.Option(False, help="Use the stock loss (materializes full logits; needs ~4 GB more VRAM at 4k)."),
-    loss_chunk_size: int = typer.Option(1024),
+    loss_chunk_size: int = typer.Option(512),
     dry_run: bool = typer.Option(False, help="Render and tokenize only; print length stats and one example."),
 ) -> None:
     """QLoRA fine-tune a base model on the exported conversations."""

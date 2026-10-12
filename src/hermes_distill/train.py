@@ -50,7 +50,7 @@ class TrainConfig:
     max_samples: int | None = None
     drop_reasoning: bool = False
     chunked_loss: bool = True
-    loss_chunk_size: int = 1024
+    loss_chunk_size: int = 512
 
 
 def load_records(path: Path, max_samples: int | None = None) -> list[dict[str, Any]]:
@@ -148,7 +148,12 @@ def _make_chunked_trainer(SFTTrainer: Any, chunk_size: int) -> Any:
             labels = inputs["labels"]
             base = model.get_base_model() if hasattr(model, "get_base_model") else model
             backbone, lm_head = base.model, base.lm_head
-            out = backbone(input_ids=inputs["input_ids"], attention_mask=inputs.get("attention_mask"), use_cache=False)
+            # An all-ones mask (batch size 1, no padding) is semantically None, but passing it as a
+            # tensor forces SDPA onto the math kernel, which materializes L x L attention per layer.
+            mask = inputs.get("attention_mask")
+            if mask is not None and bool(mask.all()):
+                mask = None
+            out = backbone(input_ids=inputs["input_ids"], attention_mask=mask, use_cache=False)
             hidden = out.last_hidden_state[:, :-1, :]
             shift_labels = labels[:, 1:]
             total = hidden.new_zeros((), dtype=torch.float32)
@@ -165,6 +170,13 @@ def _make_chunked_trainer(SFTTrainer: Any, chunk_size: int) -> Any:
 
 
 def train(cfg: TrainConfig) -> dict[str, Any]:
+    import os
+    import sys
+
+    # Reduce allocator fragmentation; matters when peak usage sits within ~1 GB of the card.
+    # (Not supported by the CUDA allocator on Windows; it only warns there, so skip it.)
+    if sys.platform != "win32":
+        os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     import torch
     from datasets import Dataset
     from peft import LoraConfig
