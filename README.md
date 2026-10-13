@@ -157,6 +157,52 @@ Per tool, v3's gain over v2 is almost all `terminal` (30/35 vs 23/35) and `write
 `patch` stays at 0/2 for every student, which is the one tool the data has too few examples of (109
 calls in 952 sessions).
 
+### Is it just overfitting?
+
+Two more checks, both on turns scored the same way:
+
+- **Training-set fit**: 30 of the 65 first-day sessions, which both v2 and v3 trained on.
+- **Out of distribution**: 23 new sessions on a different project. That project is a ComfyUI image
+  pipeline with its own scripts, JSON manifests, workflows and logs. The student never saw it. The
+  prompts were written by hand and the teacher generated the sessions the same day
+  (`SANDBOX_SRC=... scripts/datagen/run_sessions.py`).
+
+| model | training-set fit (81 turns) | 118-turn holdout | new project (85 turns) |
+|---|---:|---:|---:|
+| Qwen3-4B base | 50.0% | 29.7% | 22.2% |
+| v1 (61 sessions) | n/a | 41.6% | 44.4% |
+| v2 (429 sessions) | 84.6% | 71.4% | 75.0% |
+| v3 (952 sessions) | 84.6% | 85.7% | 82.8% |
+
+*Right-tool accuracy.*
+
+On the new project, v3 scored 92.9% on action type, 21.9% on exact arguments and 96.9% on valid JSON, at 2.1 s per turn.
+
+v3 scores the same on sessions it trained on, sessions it did not, and a codebase it never saw.
+A model that memorized its data would show a large train-to-test gap; this one shows none. What it
+learned is the agent's *policy*: which tool to reach for given the request and what is on screen.
+Before acting, it searches files to orient itself, reads a file and then runs code over it, and it
+answers without tools when no tool is needed. The base model gets worse as the tasks move away from
+the sandbox it was asked about. The students do not.
+
+Why the student agrees with the teacher more than the teacher agrees with itself:
+
+- The original sessions were *sampled*, and every model in the eval is decoded greedily at temperature 0.
+- Training on about a thousand sampled trajectories and then decoding greedily gives the teacher's
+  most common choice in each state. On ambiguous turns that is also the choice the held-out
+  trajectory most likely contains.
+- So "beats the teacher" means "more consistent than the teacher", nothing more. The same effect caps
+  "args exact" near 20 to 25% for every model, the teacher included.
+
+What this does **not** show:
+
+- These are still one-shot Hermes tasks of the same *kinds*: read, search, data, write, patch, a few
+  multi-step ones. They used the same tools and the same sandbox rules. A new codebase is not a new job.
+- The out-of-distribution set is small: about ±10 points at 85 turns.
+- Every scored turn is conditioned on the teacher's own correct history. Nothing here tests whether
+  the student recovers after its *own* wrong move, which is where a collapsed, low-variance policy
+  should be weakest.
+
 What the first runs taught us, in order of how much it mattered:
 
 1. **Loss masking is not optional.** Only 13% of the tokens in a Hermes session are the assistant's
