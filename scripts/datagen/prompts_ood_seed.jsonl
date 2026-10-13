@@ -1,0 +1,24 @@
+{"cat": "read", "prompt": "Read STATUS.md and tell me in three bullets where the project stands and what the next action is."}
+{"cat": "read", "prompt": "Read scripts/recommend.py and explain how it avoids picking 25 near-identical images."}
+{"cat": "read", "prompt": "Open scripts/generate.py and list its command-line options with one line each."}
+{"cat": "search", "prompt": "Which scripts under scripts/ reference the wildcards directory? List file and line number."}
+{"cat": "search", "prompt": "Find every place in this directory that mentions seed 88109 and tell me what it refers to."}
+{"cat": "search", "prompt": "Search the Python scripts for the code that parses the --keep argument and show me how the comma-separated list is handled."}
+{"cat": "terminal", "prompt": "How many lines are in each wildcards/*.txt file, and which pool is the largest?"}
+{"cat": "terminal", "prompt": "List the API-format workflow JSON files under workflows/ with their sizes in bytes, largest first."}
+{"cat": "terminal", "prompt": "Count the lines in casting.log and tell me how many casting entries took longer than 40 seconds."}
+{"cat": "data", "prompt": "In dataset_manifest.json, count how many entries there are per style and per lighting value. Give two small tables."}
+{"cat": "data", "prompt": "casting_seeds_natural.json and casting_seeds_goth.json: how many seeds are in each, and do any seed values overlap?"}
+{"cat": "data", "prompt": "Look at dataset_analysis.json: what fields does each entry have, and what are the min, max and mean of whichever field looks like an identity score?"}
+{"cat": "data", "prompt": "Parse wildcards/outfit.txt and wildcards/setting.txt and write out/combos.csv with the first 20 outfit,setting pairs (header row included)."}
+{"cat": "write", "prompt": "Write out/pipeline.md: a one-page summary of the pipeline stages described in README.md and STATUS.md, naming the script that implements each stage."}
+{"cat": "write", "prompt": "Create out/wildcards_stats.json with, for each wildcard file, the number of lines and the longest line."}
+{"cat": "write", "prompt": "Write a small Python script out/pick_seeds.py that reads casting_seeds_natural.json and prints the seed for each candidate number given on the command line."}
+{"cat": "patch", "prompt": "In scripts/generate.py the --count option accepts any integer. Patch it so values below 1 raise an argparse error."}
+{"cat": "patch", "prompt": "Add a --dry-run flag to scripts/generate.py that prints the expanded prompts and exits without contacting the server. Keep the change minimal."}
+{"cat": "patch", "prompt": "Check wildcards/pose.txt for blank lines or trailing whitespace and, if there are any, clean the file in place."}
+{"cat": "multi", "prompt": "Work out which workflow file scripts/cast.py uses by default, open that workflow and tell me which checkpoint model it loads."}
+{"cat": "multi", "prompt": "Compare install_deps.sh and install_nodes.sh: list which pip packages and which custom nodes they install, then write out/deps.md with both lists."}
+{"cat": "multi", "prompt": "Read run_comfy.ps1 and download_models.sh and list every absolute path they assume exists; save the list to out/paths.txt."}
+{"cat": "chat", "prompt": "What is a LoRA, and why might 25 curated images be enough to train one for a single face?"}
+{"cat": "chat", "prompt": "Explain in two sentences what the wildcards mechanism in this project does."}

@@ -15,3 +15,4 @@ models/
 *.gguf
 *.safetensors
 .env
+scripts/datagen/sandbox_*/

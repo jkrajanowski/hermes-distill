@@ -56,6 +56,22 @@ def _write(p: Path, text: str) -> None:
     p.write_text(text, encoding="utf-8")
 
 
+DEFAULT_EXCLUDES = {".git", ".venv", "node_modules", "__pycache__", "output", "ComfyUI", "dataset"}
+
+
+def build_from_dir(sandbox: Path, src: Path, excludes: set[str] | None = None) -> None:
+    """Sandbox = a copy of an arbitrary project dir (minus heavy/VCS dirs) + AGENTS.md + out/.
+
+    Used for out-of-distribution evals: sessions on a codebase the student never saw.
+    """
+    ex = DEFAULT_EXCLUDES if excludes is None else excludes
+    if sandbox.exists():
+        shutil.rmtree(sandbox)
+    shutil.copytree(src, sandbox, ignore=shutil.ignore_patterns(*ex, "*.npy", "*.pyc"))
+    _write(sandbox / "AGENTS.md", AGENTS_MD)
+    (sandbox / "out").mkdir(exist_ok=True)
+
+
 def build(sandbox: Path, seed: int = 7) -> None:
     if sandbox.exists():
         shutil.rmtree(sandbox)

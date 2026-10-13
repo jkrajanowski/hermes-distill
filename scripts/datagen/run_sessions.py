@@ -1,4 +1,4 @@
-﻿"""Run many prompts through Hermes one-shots with per-worker sandboxes, retries and resume."""
+"""Run many prompts through Hermes one-shots with per-worker sandboxes, retries and resume."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from sandbox_builder import build
+from sandbox_builder import build, build_from_dir
 
 HERE = Path(__file__).parent
 HERMES = Path(
@@ -28,6 +28,8 @@ RETRY_MARKERS = ("rate", "429", "overloaded", "529", "timeout", "connection")
 # Only the toolsets the tasks need. Cuts the per-call prompt from ~24k to ~7.5k tokens, which is the
 # main cost lever on routes without prompt caching. Override with HERMES_TOOLSETS=... or empty to disable.
 TOOLSETS = os.environ.get("HERMES_TOOLSETS", "terminal,file,code_execution")
+# Point SANDBOX_SRC at another project to generate out-of-distribution sessions on it instead of this repo.
+SANDBOX_SRC = os.environ.get("SANDBOX_SRC")
 
 
 def run_one(idx: int, item: dict, sandbox: Path) -> dict:
@@ -54,11 +56,12 @@ def main() -> None:
     sandboxes = []
     for i in range(WORKERS):
         sb = HERE / f"sandbox_{i}"
+        make = (lambda d: build_from_dir(d, Path(SANDBOX_SRC))) if SANDBOX_SRC else build
         try:
-            build(sb)
+            make(sb)
         except PermissionError:  # a stale process still holds the old copy; use a fresh name
             sb = HERE / f"sandbox_{i}_{int(time.time())}"
-            build(sb)
+            make(sb)
         sandboxes.append(sb)
     prompts = [json.loads(line) for line in PROMPTS.read_text(encoding="utf-8").splitlines() if line.strip()][:LIMIT]
     done: set[int] = set()
