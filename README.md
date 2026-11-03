@@ -22,17 +22,20 @@ never leaving the machine.
 
 ## Install
 
-```bash
-pip install hermes-distill            # exporter + CLI only
-pip install "hermes-distill[train]"   # + torch / transformers / peft / trl / bitsandbytes
-pip install "hermes-distill[eval]"    # + openai client for the eval harness
-```
-
-From source:
+Not on PyPI yet; install from GitHub:
 
 ```bash
 git clone https://github.com/jkrajanowski/hermes-distill && cd hermes-distill
-pip install -e ".[train,eval,dev]"
+pip install -e .                  # exporter + CLI only
+pip install -e ".[train]"         # + torch / transformers / peft / trl / bitsandbytes
+pip install -e ".[eval]"          # + openai client for the eval harness
+pip install -e ".[train,eval,dev]"  # everything, plus pytest and ruff
+```
+
+Or without cloning:
+
+```bash
+pip install "hermes-distill[train,eval] @ git+https://github.com/jkrajanowski/hermes-distill"
 ```
 
 ## Quickstart
